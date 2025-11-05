@@ -16,7 +16,9 @@ print("Accuracy:", accuracy_score(y_test, rf_pred))
 print(classification_report(y_test, rf.predict(X_test)))
 
 os.makedirs("models", exist_ok=True)
-joblib.dump((rf, X_train.columns.tolist()), "../models/model_rf.pkl")
+# joblib.dump((rf, X_train.columns.tolist()), "../models/model_rf.pkl")
+joblib.dump((rf, X_train.columns.tolist()), "models/model_rf.pkl")
+
 
 # XGBoost
 xg = xgb.XGBClassifier(
@@ -32,5 +34,6 @@ print("XGB Report")
 xg_pred = xg.predict(X_test)
 print("Accuracy:", accuracy_score(y_test, xg_pred))
 print(classification_report(y_test, xg.predict(X_test)))
-joblib.dump((xg, X_train.columns.tolist()), "../models/model_xgb.pkl")
+# joblib.dump((xg, X_train.columns.tolist()), "../models/model_xgb.pkl")
+joblib.dump((xg, X_train.columns.tolist()), "models/model_xgb.pkl")
 

@@ -2,7 +2,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 import re
 
-def get_splits(path="../data/ai4i2020.csv"):
+def get_splits(path="data/ai4i2020.csv"):
     df = pd.read_csv(path)
 
     target = "Machine failure"

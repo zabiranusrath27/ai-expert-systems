@@ -1,3 +1,43 @@
-/mlenv
+# Virtual environments
+/mlenv/
+/venv/
+/.env/
+env/
 
-/venv
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+*.egg
+
+# Data files
+/data/*.csv
+/data/*.xlsx
+*.csv
+*.xlsx
+
+# Models and analysis outputs
+/models/*.pkl
+*.pkl
+/shap_results/
+shap_results.json
+shap_results.xlsx
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temp files
+*.log
+*.tmp
+.coverage
+htmlcov/
