@@ -1,22 +1,38 @@
 import joblib
 import pandas as pd
 import os
+from rules import rule_based_recommendation
 
 
-def load_model(path="models/model_rf.pkl"):
+def load_model():
+    """
+    Loads the trained model for inference.
+    Falls back to Random Forest model if best_model.pkl doesn't exist.
+    """
     base_dir = os.path.dirname(os.path.dirname(__file__))  # project root
-    model_path = os.path.join(base_dir, path)
 
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(f" Model file not found at: {model_path}")
+    # ✅ Prefer the best model if it exists, else use RF model
+    best_model_path = os.path.join(base_dir, "models", "best_model.pkl")
+    fallback_model_path = os.path.join(base_dir, "models", "model_rf.pkl")
+
+    if os.path.exists(best_model_path):
+        model_path = best_model_path
+    elif os.path.exists(fallback_model_path):
+        model_path = fallback_model_path
+    else:
+        raise FileNotFoundError("❌ No model file found in 'models/' directory.")
 
     model, feature_names = joblib.load(model_path)
     return model, feature_names
 
 
-def predict(input_data, model_path="models/model_rf.pkl"):
+def predict(input_data):
+    """
+    Predicts machine condition using the best available trained model.
+    Combines ML prediction with expert rule recommendations.
+    """
 
-    # 🔥 Fix column name mismatch
+    # ✅ Fix column name mismatch
     rename_map = {
         "Air temperature [K]": "Air_temperature_K",
         "Process temperature [K]": "Process_temperature_K",
@@ -28,47 +44,191 @@ def predict(input_data, model_path="models/model_rf.pkl"):
 
     corrected_input = {rename_map[k]: v for k, v in input_data.items() if k in rename_map}
 
-    model, feature_names = joblib.load(model_path)
+    model, feature_names = load_model()
 
-    df = pd.DataFrame([corrected_input])
-    # df = pd.get_dummies(df)  # encode Type (L/M/H)
+    # 🔧 Handle categorical encoding for "Type"
     failure_map = {
-    "L": {"TWF": 1, "HDF": 0, "PWF": 0, "OSF": 0, "RNF": 0},
-    "M": {"TWF": 0, "HDF": 1, "PWF": 0, "OSF": 0, "RNF": 0},
-    "H": {"TWF": 0, "HDF": 0, "PWF": 1, "OSF": 0, "RNF": 0},
+        "L": {"TWF": 1, "HDF": 0, "PWF": 0, "OSF": 0, "RNF": 0},
+        "M": {"TWF": 0, "HDF": 1, "PWF": 0, "OSF": 0, "RNF": 0},
+        "H": {"TWF": 0, "HDF": 0, "PWF": 1, "OSF": 0, "RNF": 0},
     }
 
-    failure_cols = failure_map[input_data["Type"]]
+    machine_type = input_data.get("Type", "L")
+    failure_cols = failure_map.get(machine_type, {"TWF": 0, "HDF": 0, "PWF": 0, "OSF": 0, "RNF": 0})
     df = pd.DataFrame([{**corrected_input, **failure_cols}])
 
-
+    # ✅ Align with model training columns
     aligned_df = pd.DataFrame(columns=feature_names)
-    aligned_df.loc[0] = 0  # initialize zeros
-
+    aligned_df.loc[0] = 0
     for col in df.columns:
         if col in aligned_df.columns:
             aligned_df[col] = df[col].astype(float)
 
+    # 🔍 Model predictions
     failure_prob = float(model.predict_proba(aligned_df)[0][1])
     prediction = int(model.predict(aligned_df)[0])
 
-    # --- Rule Engine ---
+    # 🧠 Rule-based recommendation
+    rule_explanation = rule_based_recommendation(input_data)
+
+    # 🎯 Combine ML + Expert Rule reasoning
     if failure_prob < 0.30:
-        advice = "✅ Machine within expected operating range."
-        rule_fired = "No rule triggered"
-    elif 0.30 <= failure_prob < 0.70:
-        advice = "⚠️ Tool recalibration recommended soon."
-        rule_fired = "KL-01 (Temperature + Tool Wear)"
+        risk_label = "✅ Low Risk"
+    elif failure_prob < 0.70:
+        risk_label = "⚠️ Moderate Risk"
     else:
-        advice = "🚨 Inspect load alignment / lubrication / replace tool."
-        rule_fired = "KL-03 / KL-04 (High torque + high temp)"
+        risk_label = "🚨 High Failure Risk"
 
     return {
         "prediction": prediction,
         "failure_probability": failure_prob,
-        "advice": advice,
-        "rule_fired": rule_fired
+        "risk_label": risk_label,
+        "expert_recommendation": rule_explanation
     }
+# import joblib
+# import pandas as pd
+# import os
+# from rules import rule_based_recommendation
+
+
+# def load_model(path="models/model_rf.pkl"):
+#     base_dir = os.path.dirname(os.path.dirname(__file__))  # project root
+#     model_path = os.path.join(base_dir, path)
+
+#     if not os.path.exists(model_path):
+#         raise FileNotFoundError(f"Model file not found at: {model_path}")
+
+#     model, feature_names = joblib.load(model_path)
+#     return model, feature_names
+
+
+# def predict(input_data, model_path="models/model_rf.pkl"):
+
+#     # ✅ Fix column name mismatch
+#     rename_map = {
+#         "Air temperature [K]": "Air_temperature_K",
+#         "Process temperature [K]": "Process_temperature_K",
+#         "Torque [Nm]": "Torque_Nm",
+#         "Tool wear [min]": "Tool_wear_min",
+#         "Rotational speed [rpm]": "Rotational_speed_rpm",
+#         "Type": "Type"
+#     }
+
+#     corrected_input = {rename_map[k]: v for k, v in input_data.items() if k in rename_map}
+
+#     model, feature_names = joblib.load(model_path)
+
+#     # 🔧 Handle categorical encoding for "Type"
+#     failure_map = {
+#         "L": {"TWF": 1, "HDF": 0, "PWF": 0, "OSF": 0, "RNF": 0},
+#         "M": {"TWF": 0, "HDF": 1, "PWF": 0, "OSF": 0, "RNF": 0},
+#         "H": {"TWF": 0, "HDF": 0, "PWF": 1, "OSF": 0, "RNF": 0},
+#     }
+
+#     machine_type = input_data.get("Type", "L")
+#     failure_cols = failure_map.get(machine_type, {"TWF": 0, "HDF": 0, "PWF": 0, "OSF": 0, "RNF": 0})
+#     df = pd.DataFrame([{**corrected_input, **failure_cols}])
+
+#     # ✅ Align with model training columns
+#     aligned_df = pd.DataFrame(columns=feature_names)
+#     aligned_df.loc[0] = 0
+#     for col in df.columns:
+#         if col in aligned_df.columns:
+#             aligned_df[col] = df[col].astype(float)
+
+#     # 🔍 Model predictions
+#     failure_prob = float(model.predict_proba(aligned_df)[0][1])
+#     prediction = int(model.predict(aligned_df)[0])
+
+#     # 🧠 Rule-based recommendation (externalized)
+#     rule_explanation = rule_based_recommendation(input_data)
+
+#     # 🎯 Combine ML + Expert Rule reasoning
+#     if failure_prob < 0.30:
+#         risk_label = "✅ Low Risk"
+#     elif failure_prob < 0.70:
+#         risk_label = "⚠️ Moderate Risk"
+#     else:
+#         risk_label = "🚨 High Failure Risk"
+
+#     return {
+#         "prediction": prediction,
+#         "failure_probability": failure_prob,
+#         "risk_label": risk_label,
+#         "expert_recommendation": rule_explanation
+#     }
+
+# import joblib
+# import pandas as pd
+# import os
+
+
+# def load_model(path="models/model_rf.pkl"):
+#     base_dir = os.path.dirname(os.path.dirname(__file__))  # project root
+#     model_path = os.path.join(base_dir, path)
+
+#     if not os.path.exists(model_path):
+#         raise FileNotFoundError(f" Model file not found at: {model_path}")
+
+#     model, feature_names = joblib.load(model_path)
+#     return model, feature_names
+
+
+# def predict(input_data, model_path="models/model_rf.pkl"):
+
+#     # 🔥 Fix column name mismatch
+#     rename_map = {
+#         "Air temperature [K]": "Air_temperature_K",
+#         "Process temperature [K]": "Process_temperature_K",
+#         "Torque [Nm]": "Torque_Nm",
+#         "Tool wear [min]": "Tool_wear_min",
+#         "Rotational speed [rpm]": "Rotational_speed_rpm",
+#         "Type": "Type"
+#     }
+
+#     corrected_input = {rename_map[k]: v for k, v in input_data.items() if k in rename_map}
+
+#     model, feature_names = joblib.load(model_path)
+
+#     df = pd.DataFrame([corrected_input])
+#     # df = pd.get_dummies(df)  # encode Type (L/M/H)
+#     failure_map = {
+#     "L": {"TWF": 1, "HDF": 0, "PWF": 0, "OSF": 0, "RNF": 0},
+#     "M": {"TWF": 0, "HDF": 1, "PWF": 0, "OSF": 0, "RNF": 0},
+#     "H": {"TWF": 0, "HDF": 0, "PWF": 1, "OSF": 0, "RNF": 0},
+#     }
+
+#     failure_cols = failure_map[input_data["Type"]]
+#     df = pd.DataFrame([{**corrected_input, **failure_cols}])
+
+
+#     aligned_df = pd.DataFrame(columns=feature_names)
+#     aligned_df.loc[0] = 0  # initialize zeros
+
+#     for col in df.columns:
+#         if col in aligned_df.columns:
+#             aligned_df[col] = df[col].astype(float)
+
+#     failure_prob = float(model.predict_proba(aligned_df)[0][1])
+#     prediction = int(model.predict(aligned_df)[0])
+
+#     # --- Rule Engine ---
+#     if failure_prob < 0.30:
+#         advice = "✅ Machine within expected operating range."
+#         rule_fired = "No rule triggered"
+#     elif 0.30 <= failure_prob < 0.70:
+#         advice = "⚠️ Tool recalibration recommended soon."
+#         rule_fired = "KL-01 (Temperature + Tool Wear)"
+#     else:
+#         advice = "🚨 Inspect load alignment / lubrication / replace tool."
+#         rule_fired = "KL-03 / KL-04 (High torque + high temp)"
+
+#     return {
+#         "prediction": prediction,
+#         "failure_probability": failure_prob,
+#         "advice": advice,
+#         "rule_fired": rule_fired
+#     }
 
 # import joblib
 # import pandas as pd
